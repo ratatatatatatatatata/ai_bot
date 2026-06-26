@@ -1,21 +1,23 @@
 import Link from "next/link";
+import { APP_NAME, isDemo } from "@/lib/config";
 
 export default function HomePage() {
+  const demo = isDemo();
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center px-6 py-16 text-center">
       <span className="mb-4 inline-flex items-center rounded-full bg-indigo-100 px-3 py-1 text-sm font-medium text-indigo-700">
-        Website-grounded AI
+        {APP_NAME}
       </span>
 
       <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-        A chatbot that answers only from{" "}
-        <span className="text-indigo-600">your website</span>
+        AI chatbots that answer only from{" "}
+        <span className="text-indigo-600">your content</span>
       </h1>
 
       <p className="mt-6 max-w-2xl text-lg text-slate-600">
-        Crawl any website, build a knowledge base from its real content, and
-        embed a chat widget with one script tag. If the answer isn&apos;t on the
-        site, the bot says so — it never makes things up.
+        Train a chatbot on your website, sitemap, files and custom Q&amp;A. Embed
+        it anywhere with one script tag. If the answer isn&apos;t in your content,
+        the bot says so — it never makes things up.
       </p>
 
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
@@ -33,20 +35,20 @@ export default function HomePage() {
         </Link>
       </div>
 
-      <div className="mt-16 grid w-full grid-cols-1 gap-6 sm:grid-cols-3">
+      {demo && (
+        <p className="mt-4 text-sm text-slate-500">
+          Demo mode is on — sign in with{" "}
+          <code className="rounded bg-slate-100 px-1">admin@tbplan.mn</code> /{" "}
+          <code className="rounded bg-slate-100 px-1">Tbplan@2026</code>
+        </p>
+      )}
+
+      <div className="mt-16 grid w-full grid-cols-1 gap-6 sm:grid-cols-4">
         {[
-          {
-            title: "Crawl",
-            body: "Enter a URL. We fetch public pages and extract clean text — no nav, footers or scripts.",
-          },
-          {
-            title: "Embed",
-            body: "Text is chunked and stored as vectors in Supabase for fast semantic search.",
-          },
-          {
-            title: "Answer",
-            body: "The bot retrieves matching chunks and answers strictly from them, with sources.",
-          },
+          { title: "Train", body: "Website crawl, sitemap, PDF/files, text & Q&A." },
+          { title: "Customize", body: "Colors, dark mode, avatar, suggested questions." },
+          { title: "Capture", body: "Collect leads and review every conversation." },
+          { title: "Embed", body: "One script tag. Works on any website." },
         ].map((f) => (
           <div
             key={f.title}

@@ -68,6 +68,16 @@ export async function crawlSite(
   return results;
 }
 
+/** Fetch a single URL and return its cleaned content (used by sitemap import). */
+export async function fetchPageContent(url: string): Promise<CrawledPage | null> {
+  const html = await fetchHtml(url);
+  if (!html) return null;
+  const $ = cheerio.load(html);
+  const { title, content } = extractContent($);
+  if (!content || content.length < 50) return null;
+  return { url, title, content };
+}
+
 /** Extract a clean title + body text, stripping chrome and non-content nodes. */
 export function extractContent($: cheerio.CheerioAPI): {
   title: string;

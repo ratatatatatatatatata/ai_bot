@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
-  { href: "/dashboard", label: "Websites" },
-  { href: "/dashboard/chat-history", label: "Chat history" },
-  { href: "/dashboard/settings", label: "Customize bot" },
+  { href: "/dashboard", label: "Overview", exact: true },
+  { href: "/dashboard/websites", label: "Knowledge" },
+  { href: "/dashboard/chatbots", label: "Chatbots" },
+  { href: "/dashboard/conversations", label: "Conversations" },
+  { href: "/dashboard/leads", label: "Leads" },
 ];
 
 export default function NavLinks() {
@@ -15,11 +17,9 @@ export default function NavLinks() {
   return (
     <nav className="flex flex-col gap-1">
       {links.map((link) => {
-        const active =
-          link.href === "/dashboard"
-            ? pathname === "/dashboard" ||
-              pathname.startsWith("/dashboard/websites")
-            : pathname === link.href;
+        const active = link.exact
+          ? pathname === link.href
+          : pathname.startsWith(link.href);
         return (
           <Link
             key={link.href}

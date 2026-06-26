@@ -1,25 +1,29 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getSession } from "@/lib/auth";
+import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
 
-// GET /api/chatbots[?websiteId=...] — list the admin's chatbots.
+// GET /api/chatbots[?websiteId=...]  — list chatbots.
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await getSession())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const websiteId = new URL(request.url).searchParams.get("websiteId") || undefined;
+  const chatbots = await getStore().listChatbots(websiteId);
+  return NextResponse.json({ chatbots });
+}
 
-  const websiteId = new URL(request.url).searchParams.get("websiteId");
-
-  let query = supabase
-    .from("chatbots")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (websiteId) query = query.eq("website_id", websiteId);
-
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ chatbots: data });
+// POST /api/chatbots  { websiteId, name? }  — create an additional bot.
+export async function POST(request: Request) {
+  if (!(await getSession())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { websiteId, name } = await request.json().catch(() => ({}));
+  if (!websiteId) {
+    return NextResponse.json({ error: "websiteId is required" }, { status: 400 });
+  }
+  const patch = name ? { name } : undefined;
+  const chatbot = await getStore().createChatbot(websiteId, patch);
+  return NextResponse.json({ chatbot }, { status: 201 });
 }

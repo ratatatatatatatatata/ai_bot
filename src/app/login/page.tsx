@@ -3,45 +3,45 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { APP_NAME } from "@/lib/config";
+
+const DEMO =
+  process.env.NEXT_PUBLIC_DEMO_MODE === "false"
+    ? false
+    : process.env.NEXT_PUBLIC_DEMO_MODE === "true" ||
+      !process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = createClient();
 
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(DEMO ? "admin@tbplan.mn" : "");
+  const [password, setPassword] = useState(DEMO ? "Tbplan@2026" : "");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setNotice(null);
     setLoading(true);
-
     try {
-      if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
+      if (DEMO) {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
         });
-        if (error) throw error;
-        router.push("/dashboard");
-        router.refresh();
-      } else {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        if (data.session) {
-          router.push("/dashboard");
-          router.refresh();
-        } else {
-          setNotice("Check your email to confirm your account, then sign in.");
-          setMode("signin");
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || "Login failed");
         }
+      } else {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
       }
+      router.push("/dashboard");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -56,18 +56,18 @@ export default function LoginPage() {
           ← Back
         </Link>
 
-        <h1 className="mt-4 text-2xl font-bold text-slate-900">
-          {mode === "signin" ? "Admin sign in" : "Create admin account"}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Manage your websites and chatbots.
-        </p>
+        <h1 className="mt-4 text-2xl font-bold text-slate-900">Admin sign in</h1>
+        <p className="mt-1 text-sm text-slate-500">{APP_NAME}</p>
+
+        {DEMO && (
+          <div className="mt-4 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+            Demo login is pre-filled. Just click <strong>Sign in</strong>.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-slate-700">Email</label>
             <input
               type="email"
               required
@@ -77,15 +77,11 @@ export default function LoginPage() {
               placeholder="you@example.com"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-slate-700">Password</label>
             <input
               type="password"
               required
-              minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
@@ -94,14 +90,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </p>
-          )}
-          {notice && (
-            <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-              {notice}
-            </p>
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
           )}
 
           <button
@@ -109,26 +98,9 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
           >
-            {loading
-              ? "Please wait…"
-              : mode === "signin"
-                ? "Sign in"
-                : "Create account"}
+            {loading ? "Please wait…" : "Sign in"}
           </button>
         </form>
-
-        <button
-          onClick={() => {
-            setMode(mode === "signin" ? "signup" : "signin");
-            setError(null);
-            setNotice(null);
-          }}
-          className="mt-4 w-full text-center text-sm text-indigo-600 hover:text-indigo-700"
-        >
-          {mode === "signin"
-            ? "Need an account? Create one"
-            : "Already have an account? Sign in"}
-        </button>
       </div>
     </main>
   );

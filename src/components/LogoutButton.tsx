@@ -1,14 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+
+const DEMO =
+  process.env.NEXT_PUBLIC_DEMO_MODE === "false"
+    ? false
+    : process.env.NEXT_PUBLIC_DEMO_MODE === "true" ||
+      !process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 export default function LogoutButton() {
   const router = useRouter();
-  const supabase = createClient();
 
   async function logout() {
-    await supabase.auth.signOut();
+    if (DEMO) {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } else {
+      const { createClient } = await import("@/lib/supabase/client");
+      await createClient().auth.signOut();
+    }
     router.push("/login");
     router.refresh();
   }

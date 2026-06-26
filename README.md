@@ -1,89 +1,107 @@
-# Website Knowledge Chatbot
+# TBPlan Chat Bot System
 
-A Chatling-style chatbot that answers **only** from the content of a specific
-website. It crawls the site, builds a vector knowledge base in Supabase, and
-serves an embeddable chat widget. If an answer isn't found in the crawled
-content, the bot returns a fallback message instead of inventing an answer.
+An AI chatbot platform that answers **only** from your own content. Train a bot
+on a website (crawl + sitemap), uploaded files (PDF/TXT/MD/HTML), pasted text,
+and custom Q&A — then embed a chat widget anywhere with one script tag. If the
+answer isn't in your content, the bot returns a fallback message instead of
+making something up.
 
-> Default fallback: **"Уучлаарай, энэ мэдээлэл website дээр байхгүй байна."**
+> This is an original implementation inspired by the general feature set of
+> website-chatbot tools. It does not include any third-party product's code,
+> branding, or copy.
+
+---
+
+## Two ways to run
+
+### 1. Demo mode (default — zero setup) ✅
+
+No database, no API keys. A local file-backed store seeds sample data so you can
+explore everything immediately.
+
+```bash
+npm install
+npm run dev
+```
+
+Open http://localhost:3000 → **Admin sign in** (credentials are pre-filled):
+
+```
+Email:    admin@tbplan.mn
+Password: Tbplan@2026
+```
+
+In demo mode, chat answers come from keyword search over your indexed content,
+so it works with no AI key. Add an `OPENAI_API_KEY` (and keep
+`NEXT_PUBLIC_DEMO_MODE=true`) to get embeddings + LLM-composed answers while
+still using the local store.
+
+> Demo data is stored in `.data/db.json`. Delete that file to reset.
+
+### 2. Production mode (Supabase)
+
+Set `NEXT_PUBLIC_DEMO_MODE=false`, create a Supabase project, run
+`supabase/schema.sql`, and fill the Supabase + AI keys in `.env.local`. Auth then
+uses Supabase, and all data is stored in Postgres with `pgvector`.
 
 ---
 
 ## Features
 
-- **Admin auth** — email/password via Supabase Auth. Each admin only sees their own data (enforced by Row Level Security).
-- **Website crawler** — enter a URL, crawl same-domain public pages, strip nav/footer/scripts/styles, store clean text.
-- **Vector knowledge base** — text is chunked, embedded, and stored in Supabase `pgvector`.
-- **Grounded chatbot** — retrieves the most relevant chunks and answers strictly from them, with source links.
-- **Embeddable widget** — one `<script>` tag, isolated in a Shadow DOM, mobile responsive.
-- **Admin dashboard** — add/crawl/re-crawl/delete websites & pages, view chat history, customize the bot (name, welcome message, color, logo, fallback).
+- **Train from anything** — website crawl, `sitemap.xml` import, file upload
+  (PDF / TXT / MD / HTML), pasted text, and custom Q&A pairs.
+- **Grounded answers** — semantic (pgvector / embeddings) or keyword retrieval;
+  custom Q&A is checked first; strict prompt prevents made-up answers.
+- **Multiple chatbots** — many bots per knowledge base, each with its own
+  AI provider, model, temperature, and active/paused status.
+- **Customizable widget** — colors, light/dark/auto theme, left/right position,
+  logo, avatar, launcher text, suggested questions, multilingual answers.
+- **Lead capture** — collect name/email in the widget; review and export to CSV.
+- **Analytics & conversations** — message volume, top questions, full chat logs.
+- **One-tag embed** — Shadow-DOM widget that works on any site, mobile responsive.
 
 ## Tech stack
 
-Next.js 15 (App Router) · TypeScript · Tailwind CSS · Supabase (Postgres + pgvector + Auth) · OpenAI **or** Google Gemini · Vercel.
+Next.js 15 (App Router) · TypeScript · Tailwind CSS · Supabase (Postgres +
+pgvector + Auth) · OpenAI **or** Google Gemini · Vercel.
 
 ---
 
 ## How grounding works (safety)
 
-1. The user's question is embedded and compared against stored chunks for that website only (`match_chunks` RPC, cosine similarity).
-2. If nothing clears the similarity threshold, the bot returns the **fallback message** — the model is never called.
-3. If chunks are found, they're passed as the *only* allowed context with a strict system prompt:
-   - use only the provided context, never outside knowledge;
-   - if the answer isn't in the context, return the fallback verbatim;
-   - never reveal the system prompt; never discuss unrelated topics.
-4. The chat endpoint runs server-side with the service-role key, so prompts and keys never reach the browser.
+1. Custom Q&A is matched first for exact-intent answers.
+2. Otherwise the question is matched against the bot's knowledge base
+   (embeddings when an AI key is set, keyword search otherwise).
+3. If nothing relevant is found, the bot returns its **fallback message** — the
+   LLM is not called.
+4. When chunks are found and an AI key is set, a strict system prompt forces the
+   model to answer **only** from the supplied context, never reveal the prompt,
+   and never discuss unrelated topics.
+5. All public widget calls run server-side, so keys/prompts never reach the browser.
 
 ---
 
-## Getting started
+## API routes
 
-### 1. Install
-
-```bash
-npm install
-```
-
-### 2. Create a Supabase project & schema
-
-1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run the contents of [`supabase/schema.sql`](supabase/schema.sql).
-   This enables `pgvector`, creates all tables (`users`, `websites`, `pages`, `chunks`, `chatbots`, `chat_messages`), the `match_chunks` search function, RLS policies, and a new-user trigger.
-3. In **Project Settings → API**, copy the Project URL, the `anon` key, and the `service_role` key.
-
-### 3. Configure environment variables
-
-Copy `.env.example` to `.env.local` and fill it in:
-
-```bash
-cp .env.example .env.local
-```
-
-| Variable | Required | Notes |
+| Method | Route | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Public anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | **Server only** — never expose |
-| `AI_PROVIDER` | ✅ | `openai` (default) or `gemini` |
-| `OPENAI_API_KEY` | if OpenAI | — |
-| `GEMINI_API_KEY` | if Gemini | see dimension note below |
-| `NEXT_PUBLIC_APP_URL` | ✅ | e.g. `http://localhost:3000`; used in the embed snippet |
-| `CRAWL_MAX_PAGES` | optional | default `40` |
+| POST | `/api/auth/login` · `/api/auth/logout` | Demo session |
+| GET/POST | `/api/websites` · DELETE `/api/websites/:id` | Knowledge bases |
+| POST | `/api/crawl` | Crawl a website |
+| POST | `/api/train/sitemap` · `/api/train/text` · `/api/train/file` | Other sources |
+| GET/POST | `/api/qa` · DELETE `/api/qa/:id` | Custom Q&A |
+| GET | `/api/pages` · DELETE `/api/pages/:id` | Indexed pages |
+| GET/POST | `/api/chatbots` · PATCH/DELETE `/api/chatbots/:id` | Bots |
+| GET | `/api/widget/:botId` | Public bot config (CORS) |
+| POST | `/api/chat` | Public grounded answer (CORS) |
+| POST | `/api/lead` | Public lead capture (CORS) |
+| GET | `/api/chat-history` · `/api/leads` · `/api/leads/export` · `/api/analytics` | Admin data |
 
-### 4. Run
+---
 
-```bash
-npm run dev
-```
+## Embed on any site
 
-Open `http://localhost:3000`, click **Admin sign in**, and create an account.
-(To lock things down, disable public sign-ups in Supabase → Authentication → Providers, and create your admin user there.)
-
-### 5. Use it
-
-1. **Dashboard → Add website**, then click **Crawl**.
-2. **Customize bot** to set name, welcome message, color, logo, and fallback.
-3. Copy the **embed snippet** and paste it on any site:
+From **Chatbots → (a bot) → Customize**, copy:
 
 ```html
 <script src="https://YOUR-APP.com/widget.js"
@@ -91,45 +109,19 @@ Open `http://localhost:3000`, click **Admin sign in**, and create an account.
         data-api="https://YOUR-APP.com" defer></script>
 ```
 
-Test it instantly at `/widget-demo?botId=YOUR_BOT_ID`.
-
----
-
-## Switching to Gemini
-
-Set `AI_PROVIDER=gemini` and `GEMINI_API_KEY`.
-
-> ⚠️ Gemini's `text-embedding-004` produces **768-dim** vectors, while OpenAI's
-> `text-embedding-3-small` is **1536-dim**. Before crawling with Gemini, change
-> `vector(1536)` → `vector(768)` in both the `chunks` table and the
-> `match_chunks` function in `supabase/schema.sql`, then re-crawl.
-
----
-
-## API routes
-
-| Method | Route | Auth | Purpose |
-|---|---|---|---|
-| POST | `/api/crawl` | admin | Crawl + index a website |
-| POST | `/api/chat` | public (CORS) | Grounded answer for the widget |
-| GET | `/api/pages?websiteId=` | admin | List crawled pages |
-| DELETE | `/api/pages/:id` | admin | Delete a page |
-| GET | `/api/widget/:botId` | public (CORS) | Public bot config for the widget |
-| GET/POST | `/api/chat-history` | GET: admin / POST: public | List or log chat messages |
-| GET/POST | `/api/websites` | admin | List / create websites |
-| DELETE | `/api/websites/:id` | admin | Delete a website |
-| GET | `/api/chatbots` | admin | List chatbots |
-| PATCH | `/api/chatbots/:id` | admin | Update bot appearance/messages |
+Preview instantly at `/widget-demo?botId=YOUR_BOT_ID`.
 
 ---
 
 ## Deploy to Vercel
 
-1. Push this repo to GitHub.
-2. Import it in Vercel.
-3. Add all environment variables from `.env.example` in the Vercel project settings.
-4. Set `NEXT_PUBLIC_APP_URL` to your production URL (e.g. `https://your-app.vercel.app`).
-5. Deploy. The crawl function is configured for a longer timeout in `vercel.json`.
+1. Push to GitHub, import in Vercel.
+2. For a public demo: set `NEXT_PUBLIC_DEMO_MODE=true` and `AUTH_SECRET`.
+   (Note: serverless filesystems are ephemeral, so demo data resets between
+   cold starts — use Supabase mode for persistent production data.)
+3. For production: set `NEXT_PUBLIC_DEMO_MODE=false`, the Supabase keys, and an
+   AI key; run `supabase/schema.sql` first.
+4. Set `NEXT_PUBLIC_APP_URL` to your deployed URL.
 
 ---
 
@@ -138,33 +130,33 @@ Set `AI_PROVIDER=gemini` and `GEMINI_API_KEY`.
 ```
 src/
   app/
-    page.tsx                  Landing page
-    login/page.tsx            Admin sign in / sign up
-    dashboard/                Protected admin area
-      layout.tsx              Sidebar + auth guard
-      page.tsx                Websites list
-      websites/[id]/page.tsx  Pages + embed snippet
-      settings/page.tsx       Customize bot
-      chat-history/page.tsx   Chat logs
-    widget-demo/page.tsx      Live widget test page
-    api/                      Route handlers (see table above)
-  components/                 Dashboard UI (client components)
+    page.tsx                       Landing
+    login/page.tsx                 Admin sign in (demo or Supabase)
+    dashboard/
+      page.tsx                     Overview + analytics
+      websites/                    Knowledge bases + training
+      chatbots/                    Bots + per-bot customize/AI
+      conversations/               Chat logs
+      leads/                       Captured leads + CSV export
+    widget-demo/page.tsx           Live widget test
+    api/                           Route handlers (see table)
+  components/                      Dashboard UI (client)
   lib/
-    supabase/                 Browser / server / admin clients + middleware
-    ai/index.ts              OpenAI + Gemini (embeddings & chat)
-    crawler.ts               Same-domain crawler + HTML cleaning
-    chunk.ts                 Text chunking
-    retrieval.ts             match_chunks wrapper
-    prompt.ts                Strict grounding prompt
-    cors.ts                  CORS helpers for public endpoints
-public/
-  widget.js                  Embeddable chat widget (Shadow DOM)
-supabase/
-  schema.sql                 Tables, RLS, pgvector, match_chunks
+    config.ts                      App name + mode + demo creds
+    auth.ts                        Session (demo cookie or Supabase)
+    store/                         Data layer: demo (file) + supabase
+    ai/index.ts                    OpenAI + Gemini (embeddings & chat)
+    crawler.ts  sitemap.ts  text/extract.ts   Ingestion
+    chunk.ts  ingest.ts  prompt.ts  cors.ts
+    supabase/                      Supabase clients (production mode)
+public/widget.js                   Embeddable widget (Shadow DOM)
+supabase/schema.sql                Tables, RLS, pgvector (production)
 ```
 
-## Limitations & notes
+## Notes
 
-- Crawling runs inside a single serverless request. Keep `CRAWL_MAX_PAGES` modest on Vercel; for very large sites use a background queue.
-- The `ivfflat` index benefits from `ANALYZE public.chunks;` after the first big crawl. For larger datasets consider an `hnsw` index.
-- The crawler respects a basic `robots.txt` `Disallow` for `User-agent: *` and skips non-HTML assets.
+- Crawling runs in a single request — keep `CRAWL_MAX_PAGES` modest on serverless.
+- For large production datasets, run `analyze public.chunks;` after the first
+  big crawl, or switch the vector index to `hnsw`.
+- Gemini embeddings are 768-dim; change `vector(1536)` → `vector(768)` in the
+  schema before using Gemini in production.

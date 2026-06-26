@@ -92,16 +92,21 @@ export interface ChatArgs {
   system: string;
   user: string;
   temperature?: number;
+  /** Optional per-call overrides (e.g. per-bot AI controls). */
+  provider?: string;
+  model?: string;
 }
 
 /** Single-turn chat completion (system + user) returning plain text. */
 export async function chat(args: ChatArgs): Promise<string> {
-  return provider() === "gemini" ? chatGemini(args) : chatOpenAI(args);
+  const p =
+    (args.provider || provider()).toLowerCase() === "gemini" ? "gemini" : "openai";
+  return p === "gemini" ? chatGemini(args) : chatOpenAI(args);
 }
 
-async function chatOpenAI({ system, user, temperature = 0.1 }: ChatArgs): Promise<string> {
+async function chatOpenAI({ system, user, temperature = 0.1, model }: ChatArgs): Promise<string> {
   const apiKey = requireEnv("OPENAI_API_KEY");
-  const model = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
+  const chatModel = model || process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -110,7 +115,7 @@ async function chatOpenAI({ system, user, temperature = 0.1 }: ChatArgs): Promis
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: chatModel,
       temperature,
       messages: [
         { role: "system", content: system },
@@ -129,12 +134,12 @@ async function chatOpenAI({ system, user, temperature = 0.1 }: ChatArgs): Promis
   return json.choices[0]?.message?.content?.trim() ?? "";
 }
 
-async function chatGemini({ system, user, temperature = 0.1 }: ChatArgs): Promise<string> {
+async function chatGemini({ system, user, temperature = 0.1, model }: ChatArgs): Promise<string> {
   const apiKey = requireEnv("GEMINI_API_KEY");
-  const model = process.env.GEMINI_CHAT_MODEL || "gemini-1.5-flash";
+  const chatModel = model || process.env.GEMINI_CHAT_MODEL || "gemini-1.5-flash";
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${chatModel}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

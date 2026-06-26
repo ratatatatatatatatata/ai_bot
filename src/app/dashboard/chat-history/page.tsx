@@ -1,23 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
-import ChatHistory from "@/components/ChatHistory";
-import type { ChatMessage, Website } from "@/lib/types";
+import { redirect } from "next/navigation";
 
-export default async function ChatHistoryPage() {
-  const supabase = await createClient();
-
-  const [{ data: messages }, { data: websites }] = await Promise.all([
-    supabase
-      .from("chat_messages")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200),
-    supabase.from("websites").select("*"),
-  ]);
-
-  return (
-    <ChatHistory
-      websites={(websites as Website[]) ?? []}
-      initialMessages={(messages as ChatMessage[]) ?? []}
-    />
-  );
+// Renamed to "Conversations".
+export default function ChatHistoryRedirect() {
+  redirect("/dashboard/conversations");
 }

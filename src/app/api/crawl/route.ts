@@ -1,127 +1,66 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getSession } from "@/lib/auth";
+import { getStore } from "@/lib/store";
 import { crawlSite } from "@/lib/crawler";
-import { chunkText } from "@/lib/chunk";
-import { embedTexts } from "@/lib/ai";
+import { ingestPages } from "@/lib/ingest";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // allow long crawls on Vercel
+export const maxDuration = 60;
 
 // POST /api/crawl  { websiteId }
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await getSession())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { websiteId } = await request.json().catch(() => ({}));
   if (!websiteId) {
     return NextResponse.json({ error: "websiteId is required" }, { status: 400 });
   }
 
-  // Verify ownership via RLS-protected client.
-  const { data: website, error: wErr } = await supabase
-    .from("websites")
-    .select("*")
-    .eq("id", websiteId)
-    .single();
-
-  if (wErr || !website) {
+  const store = getStore();
+  const website = await store.getWebsite(websiteId);
+  if (!website) {
     return NextResponse.json({ error: "Website not found" }, { status: 404 });
   }
 
-  const admin = createAdminClient();
   const maxPages = Number(process.env.CRAWL_MAX_PAGES || 40);
-
-  await admin
-    .from("websites")
-    .update({ status: "crawling", status_message: null })
-    .eq("id", websiteId);
+  await store.updateWebsite(websiteId, { status: "crawling", status_message: null });
 
   try {
-    // Fresh crawl: clear previous content so re-crawls don't duplicate.
-    await admin.from("chunks").delete().eq("website_id", websiteId);
-    await admin.from("pages").delete().eq("website_id", websiteId);
+    // Re-crawl: clear previously crawled pages (keep uploads / text / Q&A).
+    await store.clearKnowledge(websiteId, ["crawl"]);
 
-    const pages = await crawlSite(website.base_url, maxPages);
-
-    if (pages.length === 0) {
-      await admin
-        .from("websites")
-        .update({
-          status: "error",
-          status_message: "No readable pages were found.",
-          pages_count: 0,
-        })
-        .eq("id", websiteId);
+    const crawled = await crawlSite(website.base_url, maxPages);
+    if (crawled.length === 0) {
+      await store.updateWebsite(websiteId, {
+        status: "error",
+        status_message: "No readable pages were found.",
+      });
       return NextResponse.json(
         { error: "No readable pages were found at that URL." },
         { status: 422 }
       );
     }
 
-    let totalChunks = 0;
+    const { chunks } = await ingestPages(
+      store,
+      websiteId,
+      crawled.map((p) => ({ ...p, source: "crawl" as const }))
+    );
 
-    for (const page of pages) {
-      const { data: pageRow, error: pErr } = await admin
-        .from("pages")
-        .insert({
-          website_id: websiteId,
-          url: page.url,
-          title: page.title,
-          content: page.content,
-        })
-        .select()
-        .single();
-
-      if (pErr || !pageRow) continue;
-
-      const chunks = chunkText(page.content);
-      if (chunks.length === 0) continue;
-
-      // Embed in batches to stay within request limits.
-      const batchSize = 96;
-      for (let i = 0; i < chunks.length; i += batchSize) {
-        const batch = chunks.slice(i, i + batchSize);
-        const embeddings = await embedTexts(batch);
-
-        const rows = batch.map((text, j) => ({
-          website_id: websiteId,
-          page_id: pageRow.id,
-          page_url: page.url,
-          page_title: page.title,
-          chunk_text: text,
-          embedding: embeddings[j],
-        }));
-
-        const { error: cErr } = await admin.from("chunks").insert(rows);
-        if (!cErr) totalChunks += rows.length;
-      }
-    }
-
-    await admin
-      .from("websites")
-      .update({
-        status: "done",
-        status_message: `Indexed ${pages.length} pages, ${totalChunks} chunks.`,
-        pages_count: pages.length,
-        last_crawled_at: new Date().toISOString(),
-      })
-      .eq("id", websiteId);
-
-    return NextResponse.json({
-      ok: true,
-      pages: pages.length,
-      chunks: totalChunks,
+    const pagesCount = (await store.listPages(websiteId)).length;
+    await store.updateWebsite(websiteId, {
+      status: "done",
+      status_message: `Indexed ${crawled.length} pages, ${chunks} chunks.`,
+      pages_count: pagesCount,
+      last_crawled_at: new Date().toISOString(),
     });
+
+    return NextResponse.json({ ok: true, pages: crawled.length, chunks });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crawl failed";
-    await admin
-      .from("websites")
-      .update({ status: "error", status_message: message })
-      .eq("id", websiteId);
+    await store.updateWebsite(websiteId, { status: "error", status_message: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

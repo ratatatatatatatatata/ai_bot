@@ -23,7 +23,7 @@ export default function WidgetDemoPage() {
 
     return () => {
       s.remove();
-      document.getElementById("wkb-host")?.remove();
+      document.getElementById("tbp-host")?.remove();
     };
   }, []);
 
