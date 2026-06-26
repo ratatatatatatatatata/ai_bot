@@ -137,7 +137,7 @@ function seed(): DB {
         website_id: website.id,
         page_id: page.id,
         page_url: page.url,
-        page_title: page.title,
+        page_title: page.title ?? "",
         chunk_text: text.trim(),
         embedding: null,
         created_at: now(-1),
